@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LH2 / CCH2 Techno-Economic Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+:root{--ink:#17313a;--mute:#5d737a;--line:#d5e0e2;--bg:#f5f9f9;--card:#fff;--teal:#00807f;--blue:#26669e;--orange:#cc5a2e}
+@media(prefers-color-scheme:dark){:root{--ink:#e3eef0;--mute:#93a9ae;--line:#2b4249;--bg:#0f1b1f;--card:#16272c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,sans-serif}
+header{padding:28px 5vw 18px;border-bottom:3px solid var(--teal)}
+h1{margin:0;font-size:1.6rem;font-weight:600}header p{margin:4px 0 0;color:var(--mute);max-width:70ch}
+nav{display:flex;gap:4px;padding:0 5vw;border-bottom:1px solid var(--line);overflow-x:auto;background:var(--card)}
+nav button{border:0;background:none;color:var(--mute);padding:12px 16px;font:inherit;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+nav button.on{color:var(--teal);border-color:var(--teal);font-weight:600}
+nav button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+main{padding:22px 5vw 60px;max-width:1250px}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px;margin-bottom:16px}
+.btn{background:var(--teal);color:#fff;border:0;border-radius:4px;padding:8px 14px;font:inherit;cursor:pointer;margin:4px 6px 4px 0}
+.btn.alt{background:none;color:var(--teal);border:1px solid var(--teal)}
+.note{color:var(--mute);font-size:.9rem}.warn{color:var(--orange)}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+th{color:var(--mute);font-weight:600}
+.scroll{overflow-x:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px 22px}
+.grid label{display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:.85rem}
+.grid input{width:110px;padding:4px 6px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);font:inherit;text-align:right}
+h3{margin:18px 0 8px;font-size:1rem}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}
+.charts .card{height:380px}
+select{padding:5px;font:inherit;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:4px}
+</style>
+</head>
+<body>
+<header>
+<h1>LH2 / CCH2 techno-economic analysis</h1>
+<p>Levelized cost of hydrogen delivered (LCoHC) from India to Taranto, for liquid and compressed-cryogenic hydrogen. Load your DWSIM files and everything runs in your browser; no data leaves your computer.</p>
+</header>
+<nav id="tabs"></nav>
+<main>
+<section id="t-in">
+<div class="card">
+<h3 style="margin-top:0">A. Extract from DWSIM files</h3>
+<p class="note">Choose the DWSIM files (.dwxmz, .dwxml or exported .xml). Each file is matched to a scenario by its name; change the match if it is wrong, or set it to skip.</p>
+<p><input type="file" id="fd" multiple accept=".xml,.dwxmz,.dwxml,.zip"></p>
+<div id="fileList"></div>
+<p class="note">Optional heat-exchanger pressure files (heat exchanger number, pressure in bar):<br>
+LH2 <input type="file" id="pl" accept=".txt,.csv"> CCH2 <input type="file" id="pc" accept=".txt,.csv"></p>
+<p><label><input type="checkbox" id="cred"> Credit expander power as electricity revenue</label></p>
+<button class="btn" id="ext">Extract cost tables</button>
+<span id="exStat" class="note"></span>
+</div>
+<div class="card">
+<h3 style="margin-top:0">B. Or load ready-made tables</h3>
+<p class="note">ForCAPEX and ForOPEX files (.txt tab-separated or .csv). Select several to combine LH2 and CCH2.</p>
+<p>CAPEX <input type="file" id="fc" multiple accept=".txt,.csv,.tsv"> OPEX <input type="file" id="fo" multiple accept=".txt,.csv,.tsv"></p>
+</div>
+<div class="card"><p id="inStat" class="warn">No tables loaded yet.</p>
+<button class="btn alt" id="dCap">Download ForCAPEX.txt</button><button class="btn alt" id="dOpx">Download ForOPEX.txt</button>
+<div class="scroll" id="capPrev"></div><div class="scroll" id="opxPrev"></div></div>
+</section>
+<section id="t-as"><div class="card">
+<button class="btn" id="saveA">Save assumptions (JSON)</button>
+<label class="btn alt">Load assumptions<input type="file" id="loadA" accept=".json" hidden></label>
+<button class="btn alt" id="resetA">Reset to base case</button>
+<div id="form"></div></div></section>
+<section id="t-re"><div class="card">
+<button class="btn" id="dlS">Download summary CSV</button>
+<button class="btn alt" id="dlC">Download contributions CSV</button>
+<div class="scroll" id="sum"></div><h3>Contribution breakdown (EUR/kg H₂)</h3><div class="scroll" id="con"></div></div></section>
+<section id="t-fi"><div class="charts">
+<div class="card"><canvas id="c1"></canvas></div><div class="card"><canvas id="c2"></canvas></div>
+<div class="card"><canvas id="c3"></canvas></div><div class="card"><canvas id="c4"></canvas></div></div></section>
+<section id="t-se"><div class="card">
+Carrier <select id="sc"><option>LH2</option><option>CCH2</option></select>
+Pathway <select id="sp"><option>Hydrogen Valley</option><option>Centralized HRS</option><option>Decentralized HRS</option></select>
+<div style="height:430px;margin-top:12px"><canvas id="c5"></canvas></div>
+<div class="scroll" id="sens"></div></div></section>
+</main>
+<script>
+/* ============ ASSUMPTIONS (same names and defaults as tea_model.py) ============ */
+const G=["Process & financial","Utilities & core process","Maritime & storage","Pipeline (Hydrogen Valley)","HRS & trucks","Cost evolution 2030-2050"];
+const S=[[0,"F_LH2_kgs",1.419],[0,"F_CCH2_kgs",1.6667],[0,"operating_hours",8000],[0,"lifetime_years",30],[0,"WACC",0.07],[0,"location_factor",1.10],[0,"CEPCI_base",397],[0,"CEPCI_current",870],[0,"production_cost_EUR_kg",4],
+[1,"electricity_EUR_MWh",50],[1,"cooling_water_EUR_GJ",0.354],[1,"refrigerated_water_EUR_GJ",0],[1,"core_maintenance_fraction",0.15],[1,"add_conversion_penalty",1],[1,"delta_h_conversion_kW_per_kgs",131.75],[1,"T_cold_K",77],[1,"T_hot_K",298],[1,"second_law_efficiency",0.25],
+[2,"delivery_interval_days",13],[2,"sailing_days",11],[2,"average_terminal_residence_days",6.5],[2,"number_of_ships",2],[2,"fill_fraction",0.98],[2,"heel_fraction",0.04],[2,"rho_LH2_kg_m3",70],[2,"rho_CCH2_kg_m3",71.72],[2,"LH2_ship_CAPEX_multiplier",1],[2,"LH2_storage_CAPEX_multiplier",1],[2,"CCH2_ship_CAPEX_multiplier",3],[2,"CCH2_storage_CAPEX_multiplier",3],[2,"storage_OPEX_fraction",0.015],[2,"LH2_ship_BOG_per_day",0.0015],[2,"LH2_terminal_BOG_per_day",0.0015],[2,"CCH2_ship_BOG_per_day",0],[2,"CCH2_terminal_BOG_per_day",0],[2,"crew_per_ship",16],[2,"crew_cost_EUR_year_person",52000],[2,"fuel_price_EUR_t",580],[2,"engine_power_kW",3000],[2,"specific_fuel_consumption_kg_kWh",0.1587],[2,"fuel_CO2_factor_tCO2_tfuel",3.114],[2,"CO2_price_EUR_t",90],[2,"ETS_coverage_fraction",0.5],
+[3,"pipeline_length_km",12],[3,"pipeline_parallel_lines",2],[3,"pipeline_cost_MEUR_km_line",2],[3,"pipeline_OPEX_fraction",0.02],
+[4,"HRS_market_fraction",0.05],[4,"CGH2_trailer_payload_kg",1000],[4,"truck_roundtrips_per_day",2],[4,"truck_reserve_fraction",0.15],[4,"truck_roundtrip_distance_km",100],[4,"truck_CAPEX_MEUR",1.5],[4,"truck_maintenance_fraction",0.05],[4,"drivers_per_truck",1.5],[4,"driver_cost_EUR_year",60000],[4,"truck_fuel_consumption_L_km",0.35],[4,"road_fuel_EUR_L",1.8],[4,"diesel_CO2_kg_L",2.64],[4,"number_of_decentralized_stations",20],[4,"LH2_decentralized_reference_flow_kgs",1.4],[4,"CCH2_decentralized_reference_flow_kgs",1.6667],[4,"decentralized_scale_exponent",0.7],[4,"decentralized_fixed_station_CAPEX_MEUR",1],[4,"decentralized_fixed_station_OPEX_fraction",0.05],
+[5,"evo_production_cost_2030",2.7],[5,"evo_production_cost_2050",0.7],[5,"evo_electricity_2030",50],[5,"evo_electricity_2050",25],[5,"evo_CCH2_multiplier_2030",3],[5,"evo_CCH2_multiplier_2050",2],[5,"evo_LH2_BOG_2030",0.0015],[5,"evo_LH2_BOG_2050",0.001]];
+const DEF=Object.fromEntries(S.map(s=>[s[1],s[2]]));
+const PATHWAYS=["Hydrogen Valley","Centralized HRS","Decentralized HRS"], CARRIERS=["LH2","CCH2"];
+
+/* ============ MODEL (line-by-line port of tea_model.py) ============ */
+const nv=x=>{const v=parseFloat(x);return isNaN(v)?NaN:v}, z=v=>isNaN(v)?0:v;
+const crf=(w,n)=>w==0?1/n:w*(1+w)**n/((1+w)**n-1);
+const rowsOf=(t,s)=>t.filter(r=>String(r.Scenario||"").trim().toLowerCase()==s.toLowerCase());
+function equip(rows,A){let cb=0,c0=0;
+ for(const r of rows){const a=nv(r.A);if(isNaN(a)||a<=0)continue;
+  const [K1,K2,K3,C1,C2,C3,FM,B1,B2,FBM]=["K1","K2","K3","C1","C2","C3","FM","B1","B2","FBM"].map(k=>z(nv(r[k])));
+  const P=nv(r.Pressure),la=Math.log10(a);
+  const Cp=10**(K1+K2*la+K3*la*la)*A.CEPCI_current/A.CEPCI_base;
+  let FP=1;if(!((C1==0&&C2==0&&C3==0)||isNaN(P)||P<=0)){const lp=Math.log10(P);FP=Math.max(1,10**(C1+C2*lp+C3*lp*lp))}
+  let fb,c;if(B1==0&&B2==0&&FBM>0){fb=FBM;c=Cp*FBM}else{fb=FM*FP*(B1+B2);c=Cp*(B1+B2)}
+  cb+=Cp*fb;c0+=c}
+ return(1.18*cb+0.5*c0)*A.location_factor}
+const sb=(rows,b)=>rows.reduce((s,r)=>String(r.Billing||"").trim().toLowerCase()==b.toLowerCase()&&!isNaN(nv(r.Value_kW))?s+nv(r.Value_kW):s,0);
+function util(rows,A,F,pen){const e=sb(rows,"Electric"),cr=sb(rows,"ElectricCredit"),cw=sb(rows,"CW"),rw=sb(rows,"RW");
+ let p=0;if(pen&&A.add_conversion_penalty){p=F*A.delta_h_conversion_kW_per_kgs/(A.T_cold_K/(A.T_hot_K-A.T_cold_K)*A.second_law_efficiency)}
+ const h=A.operating_hours;
+ return Math.max(0,e+p-cr)*h/1000*A.electricity_EUR_MWh+cw*3600*h/1e6*A.cooling_water_EUR_GJ+rw*3600*h/1e6*A.refrigerated_water_EUR_GJ}
+function scaledHRS(cap,op,sc,Fref,Ft,A){const cr=rowsOf(cap,sc),or=rowsOf(op,sc),ratio=Fref?Ft/Fref:0;
+ return[equip(cr,A)*ratio**A.decentralized_scale_exponent,util(or,A,0,false)*ratio]}
+function trucks(F,A){const loads=Math.ceil(F*86400/A.CGH2_trailer_payload_kg),oper=Math.ceil(loads/A.truck_roundtrips_per_day),fleet=Math.ceil(oper*(1+A.truck_reserve_fraction));
+ const capex=fleet*A.truck_CAPEX_MEUR*1e6,km=fleet*A.truck_roundtrips_per_day*A.truck_roundtrip_distance_km*(A.operating_hours/24),L=km*A.truck_fuel_consumption_L_km;
+ return[fleet,capex,capex*A.truck_maintenance_fraction+fleet*A.drivers_per_truck*A.driver_cost_EUR_year+L*A.road_fuel_EUR_L+L*A.diesel_CO2_kg_L/1000*A.CO2_price_EUR_t]}
+function pathway(A,cap,op,carrier,path){
+ const lh=carrier.toUpperCase()=="LH2",F=lh?A.F_LH2_kgs:A.F_CCH2_kgs,rho=lh?A.rho_LH2_kg_m3:A.rho_CCH2_kg_m3,
+  sBog=lh?A.LH2_ship_BOG_per_day:A.CCH2_ship_BOG_per_day,tBog=lh?A.LH2_terminal_BOG_per_day:A.CCH2_terminal_BOG_per_day,
+  shipM=lh?A.LH2_ship_CAPEX_multiplier:A.CCH2_ship_CAPEX_multiplier,stM=lh?A.LH2_storage_CAPEX_multiplier:A.CCH2_storage_CAPEX_multiplier;
+ const CRF=crf(A.WACC,A.lifetime_years),core=carrier+"_Core",cr=rowsOf(cap,core),or=rowsOf(op,core);
+ const capexCore=equip(cr,A),opexCore=util(or,A,F,true)+A.core_maintenance_fraction*capexCore,prod=F*3600*A.operating_hours;
+ const V=F*3600*24*A.delivery_interval_days/(rho*(A.fill_fraction-A.heel_fraction));
+ const capexShip=A.number_of_ships*0.7316*V**0.496*1e6*shipM, capexSt=2*0.057*(1.10*V)**0.6891*1e6*stM, opexSt=capexSt*A.storage_OPEX_fraction;
+ const fuelY=A.engine_power_kW*A.specific_fuel_consumption_kg_kWh*24/1000*(A.operating_hours/24)*A.number_of_ships;
+ const opexShip=A.number_of_ships*A.crew_per_ship*2*A.crew_cost_EUR_year_person+fuelY*A.fuel_price_EUR_t+fuelY*A.fuel_CO2_factor_tCO2_tfuel*A.CO2_price_EUR_t*A.ETS_coverage_fraction;
+ const atPort=prod*(1-sBog)**A.sailing_days*(1-tBog)**A.average_terminal_residence_days;
+ const p=path.trim().toLowerCase();let Fp,alloc,cH,oH,cP=0,oP=0,cT=0,oT=0,fleet=0;
+ if(p=="hydrogen valley"){Fp=F;alloc=1;[cH,oH]=scaledHRS(cap,op,carrier+"_HydrogenValley",F,Fp,A);cP=A.pipeline_length_km*A.pipeline_parallel_lines*A.pipeline_cost_MEUR_km_line*1e6;oP=cP*A.pipeline_OPEX_fraction}
+ else if(p=="centralized hrs"){Fp=F*A.HRS_market_fraction;alloc=A.HRS_market_fraction;[cH,oH]=scaledHRS(cap,op,carrier+"_Centralized",F,Fp,A);[fleet,cT,oT]=trucks(Fp,A)}
+ else if(p=="decentralized hrs"){Fp=F*A.HRS_market_fraction;alloc=A.HRS_market_fraction;const n=A.number_of_decentralized_stations,Fst=Fp/n,Fref=lh?A.LH2_decentralized_reference_flow_kgs:A.CCH2_decentralized_reference_flow_kgs;
+  const[c1,o1]=scaledHRS(cap,op,carrier+"_Decentralized",Fref,Fst,A);const fx=n*A.decentralized_fixed_station_CAPEX_MEUR*1e6;
+  cH=n*c1+fx;oH=n*o1+fx*A.decentralized_fixed_station_OPEX_fraction;[fleet,cT,oT]=trucks(Fp,A)}
+ else throw new Error("Unknown pathway "+path);
+ const d=atPort*alloc,cc=capexCore*alloc,oc=opexCore*alloc,cs=capexShip*alloc,os=opexShip*alloc,cst=capexSt*alloc,ost=opexSt*alloc;
+ const L={Production_EUR_kg:A.production_cost_EUR_kg,Core_EUR_kg:(cc*CRF+oc)/d,Maritime_EUR_kg:(cs*CRF+os)/d,Storage_EUR_kg:(cst*CRF+ost)/d,HRS_EUR_kg:(cH*CRF+oH)/d,Pipeline_EUR_kg:(cP*CRF+oP)/d,Trucks_EUR_kg:(cT*CRF+oT)/d};
+ L.Total_EUR_kg=Object.values(L).reduce((a,b)=>a+b,0);
+ return{Carrier:carrier,Pathway:path,Delivered_t:d/1000,CAPEX_M:(cc+cs+cst+cH+cP+cT)/1e6,OPEX_M:(oc+os+ost+oH+oP+oT)/1e6,Fleet:fleet,LCoHC:L}}
+const runAll=(A,c,o)=>CARRIERS.flatMap(k=>PATHWAYS.map(p=>pathway(A,c,o,k,p)));
+function evolution(A,c,o){const rows=[];for(const y of[2030,2040,2050]){const f=(y-2030)/20,lerp=n=>A["evo_"+n+"_2030"]+f*(A["evo_"+n+"_2050"]-A["evo_"+n+"_2030"]);
+ const B={...A,production_cost_EUR_kg:lerp("production_cost"),electricity_EUR_MWh:lerp("electricity"),CCH2_ship_CAPEX_multiplier:lerp("CCH2_multiplier"),CCH2_storage_CAPEX_multiplier:lerp("CCH2_multiplier"),LH2_ship_BOG_per_day:lerp("LH2_BOG"),LH2_terminal_BOG_per_day:lerp("LH2_BOG")};
+ for(const k of CARRIERS){const L=pathway(B,c,o,k,"Hydrogen Valley").LCoHC;rows.push({Carrier:k,Year:y,Total:L.Production_EUR_kg+L.Core_EUR_kg+L.Maritime_EUR_kg+L.Storage_EUR_kg})}}return rows}
+const SENS=[["Electricity price",["electricity_EUR_MWh"],30,80],["WACC",["WACC"],0.05,0.10],["LH2 boil-off rate",["LH2_ship_BOG_per_day","LH2_terminal_BOG_per_day"],0.001,0.003],["Ship CAPEX multiplier",["LH2_ship_CAPEX_multiplier"],0.8,1.2],["Terminal storage CAPEX multiplier",["LH2_storage_CAPEX_multiplier"],0.8,1.2],["Pipeline CAPEX",["pipeline_cost_MEUR_km_line"],1,3],["Hydrogen production cost",["production_cost_EUR_kg"],2,6],["Operating hours",["operating_hours"],7000,8500]];
+function sensitivity(A,c,o,k,p){const tot=B=>pathway(B,c,o,k,p).LCoHC.Total_EUR_kg,base=tot(A);
+ return{base,rows:SENS.map(([l,ks,lo,hi])=>{const a={...A},b={...A};ks.forEach(x=>{a[x]=lo;b[x]=hi});const L=tot(a),H=tot(b);return{l,lo,hi,L,H,swing:Math.abs(H-L)}}).sort((x,y)=>y.swing-x.swing)}}
+
+/* ============ UI ============ */
+let A={...DEF},CAP=[],OPX=[],charts={};
+const $=id=>document.getElementById(id),f2=(v,d=2)=>Number.isFinite(v)?v.toFixed(d):"–";
+const TABS=[["in","1  DWSIM inputs"],["as","2  Assumptions"],["re","3  Results"],["fi","4  Figures"],["se","5  Sensitivity"]];
+$("tabs").innerHTML=TABS.map(([k,l])=>`<button data-k="${k}">${l}</button>`).join("");
+function show(k){document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id=="t-"+k));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.k==k));if(k=="fi"||k=="se")render()}
+$("tabs").onclick=e=>e.target.dataset.k&&show(e.target.dataset.k);
+function buildForm(){$("form").innerHTML=G.map((g,i)=>`<h3>${g}</h3><div class="grid">`+S.filter(s=>s[0]==i).map(s=>`<label>${s[1].replace(/_/g," ")}<input type="number" step="any" data-k="${s[1]}" value="${A[s[1]]}"></label>`).join("")+"</div>").join("")}
+$("form").oninput=e=>{const v=parseFloat(e.target.value);if(!isNaN(v)){A[e.target.dataset.k]=v;render()}};
+function parse(t){const L=t.replace(/\r/g,"").split("\n").filter(l=>l.trim()),d=L[0].includes("\t")?"\t":",",h=L[0].split(d).map(s=>s.trim());
+ return L.slice(1).map(l=>{const c=l.split(d),o={};h.forEach((k,i)=>o[k]=(c[i]??"").trim());return o})}
+async function readAll(files){let r=[];for(const f of files)r=r.concat(parse(await f.text()));return r}
+$("fc").onchange=async e=>{CAP=await readAll(e.target.files);status()};
+$("fo").onchange=async e=>{OPX=await readAll(e.target.files);status()};
+function status(){const ok=CAP.length&&OPX.length;$("inStat").className=ok?"note":"warn";
+ $("inStat").textContent=`${CAP.length} CAPEX rows and ${OPX.length} OPEX rows loaded.`+(ok?"":" Both tables are needed.");
+ $("capPrev").innerHTML=CAP.length?tbl(Object.keys(CAP[0]),CAP.slice(0,200).map(r=>Object.values(r))):"";
+ $("opxPrev").innerHTML=OPX.length?tbl(Object.keys(OPX[0]),OPX.slice(0,200).map(r=>Object.values(r))):"";
+ if(ok)render()}
+/* ============ DWSIM READER (port of dwsim_reader.py) ============ */
+const PARAMS={"Compressor":{K1:2.2897,K2:1.3604,K3:-0.1027,C1:0,C2:0,C3:0,FM:0,B1:0,B2:0,FBM:7},
+"Heat exchanger":{K1:4.3247,K2:-0.303,K3:0.1634,C1:0.03881,C2:-0.11272,C3:0.083183,FM:1.8,B1:1.63,B2:1.66,FBM:0},
+"Driver":{K1:2.4604,K2:1.4191,K3:-0.1798,C1:0,C2:0,C3:0,FM:0,B1:0,B2:0,FBM:1.5},
+"Turbine":{K1:2.2476,K2:1.4965,K3:-0.1618,C1:0,C2:0,C3:0,FM:0,B1:0,B2:0,FBM:6.2},
+"Seperator":{K1:3.4974,K2:0.4485,K3:0.1074,C1:-0.1284,C2:0.3961,C3:0.00356,FM:3.1,B1:2.25,B2:1.82,FBM:0},
+"Heater":{K1:7.3488,K2:-1.1666,K3:0.2028,C1:0.1347,C2:-0.2368,C3:0.1021,FM:2.81,B1:1.63,B2:1.66,FBM:0}};
+const T2C={"adiabatic compressor":["Compressor",1],"compressor":["Compressor",1],"adiabatic pump":["Compressor",1],"pump":["Compressor",1],"adiabatic expander":["Turbine",0],"expander":["Turbine",0],"turbine":["Turbine",0],"material stream cooler":["Heat exchanger",0],"cooler":["Heat exchanger",0],"material stream heater":["Heater",0],"heater":["Heater",0],"vapor-liquid separator":["Seperator",0],"vessel":["Seperator",0],"separator":["Seperator",0],"heat exchanger":["Heat exchanger",0],"heatexchanger":["Heat exchanger",0]};
+const PREFIX=[["EE","Power","Electric"],["EH","Heat","Electric"],["EC","Cool","CW"],["ER","Refrig","RW"],["EX","Recovery","IGNORE"]];
+const SCEN=["LH2_Core","LH2_HydrogenValley","LH2_Centralized","LH2_Decentralized","CCH2_Core","CCH2_HydrogenValley","CCH2_Centralized","CCH2_Decentralized"];
+const ff=x=>{if(x==null)return null;const t=String(x).trim();if(t==="")return null;const v=Number(t);return isNaN(v)?null:v};
+function decodeXml(buf){const u=new Uint8Array(buf);let t;
+ if((u[0]==0xff&&u[1]==0xfe))t=new TextDecoder("utf-16le").decode(u);else if(u[0]==0xfe&&u[1]==0xff)t=new TextDecoder("utf-16be").decode(u);else t=new TextDecoder("utf-8").decode(u);
+ return t.replace(/^\uFEFF/,"").replace(/^\s*<\?xml[^>]*\?>/,"").trim()}
+const kid=(el,n)=>[...el.children].find(c=>c.tagName===n);
+const kidText=(el,n)=>{const c=kid(el,n);return c?c.textContent:null};
+class Obj{constructor(tag,type,props){this.tag=tag;this.type=type;this.props=props}
+ get(...ns){for(const n of ns){if(n in this.props){const v=ff(this.props[n]);if(v!==null)return v}}return null}}
+function fromExport(doc){return [...doc.querySelectorAll("Object")].map(o=>{const p={};[...o.children].filter(c=>c.tagName==="Property").forEach(c=>p[c.getAttribute("name")]=c.getAttribute("value"));return new Obj(o.getAttribute("name")||"",o.getAttribute("type")||"",p)})}
+const FRIENDLY={Compressor:"Adiabatic Compressor",Pump:"Adiabatic Pump",Expander:"Adiabatic Expander",Cooler:"Material Stream Cooler",Heater:"Material Stream Heater",HeatExchanger:"Heat Exchanger",Vessel:"Vapor-Liquid Separator",EnergyStream:"Energy Stream",MaterialStream:"Material Stream"};
+function fromFlowsheet(doc){const root=doc.documentElement,tags={},g=kid(root,"GraphicObjects");
+ if(g)[...g.children].forEach(x=>{const n=kidText(x,"Name"),t=kidText(x,"Tag");if(n)tags[n]=t||n});
+ const sim=kid(root,"SimulationObjects");if(!sim)return[];
+ return[...sim.children].map(o=>{const cls=(kidText(o,"Type")||"").split(".").pop(),name=kidText(o,"Name")||kidText(o,"ComponentName")||"",p={};
+  [...o.children].forEach(c=>{if(c.children.length===0&&c.textContent!=null)p[c.tagName]=c.textContent});
+  if(cls=="Compressor"||cls=="Pump")p["Power Required"]=p.DeltaQ||"";
+  else if(cls=="Expander"||cls=="Turbine")p["Power Generated"]=p.DeltaQ||"";
+  else if(cls=="Cooler")p["Heat Removed"]=p.DeltaQ||"";
+  else if(cls=="Heater")p["Heat Added"]=p.DeltaQ||"";
+  else if(cls=="HeatExchanger"){p["Global Heat Transfer Coefficient (U)"]=p.OverallCoefficient||"";p["Heat Exchange Area (A)"]=p.Area||"";p["Heat Load"]=p.Q||""}
+  else if(cls=="EnergyStream")p["Energy Flow"]=p.EnergyFlow||"";
+  return new Obj(tags[name]||name,FRIENDLY[cls]||cls,p)})}
+async function loadObjects(file){let buf=await file.arrayBuffer();
+ if(/\.(dwxmz|zip)$/i.test(file.name)){const z=await JSZip.loadAsync(buf),n=Object.keys(z.files).find(k=>k.toLowerCase().endsWith(".xml"));if(!n)throw new Error("No XML inside "+file.name);buf=await z.files[n].async("arraybuffer")}
+ const text=decodeXml(buf),doc=new DOMParser().parseFromString(text,"application/xml");
+ if(doc.querySelector("parsererror"))throw new Error("Cannot read XML in "+file.name);
+ return text.includes("<SimulationObjects")?fromFlowsheet(doc):fromExport(doc)}
+function readPressures(t){const m={};t.split(/\r?\n/).forEach((l,i)=>{const p=l.replace(/,/g,"\t").split("\t").map(x=>x.trim());if(p.length<2||(i==0&&!/^\d+$/.test(p[0])))return;const k=parseInt(p[0]),v=parseFloat(p[1]);if(!isNaN(k)&&!isNaN(v))m[k]=v});return m}
+function extractTables(objs,scen,pr,credit){const cap=[],opx=[];
+ const add=(tag,corr,size,p)=>{const c=PARAMS[corr];cap.push({Scenario:scen,EquipmentType:tag,A:size,K1:c.K1,K2:c.K2,K3:c.K3,C1:c.C1,C2:c.C2,C3:c.C3,FM:c.FM,B1:c.B1,B2:c.B2,FBM:c.FBM,Pressure:p==null?"":p})};
+ for(const o of objs){const t=(o.type||"").trim().toLowerCase();
+  if(t==="energy stream"){const v=o.get("Energy Flow");if(v===null)continue;const tg=String(o.tag).toUpperCase().replace(/ /g,"");
+   for(const[pf,cat,bill]of PREFIX){if(tg.startsWith(pf)){let b=bill;if(b==="IGNORE"){if(!credit)break;b="ElectricCredit"}opx.push({Scenario:scen,Unit:o.tag,Category:cat,Value_kW:v,Billing:b});break}}continue}
+  if(!(t in T2C))continue;const[corr,drv]=T2C[t],hx=t==="heat exchanger"||t==="heatexchanger";let size;
+  if(corr==="Compressor")size=o.get("Power Required","DeltaQ");
+  else if(corr==="Turbine")size=o.get("Power Generated","DeltaQ");
+  else if(corr==="Heater")size=o.get("Heat Added","DeltaQ");
+  else if(corr==="Seperator"){size=o.get("Volume");if(size===null)size=1}
+  else if(hx){const U=o.get("Global Heat Transfer Coefficient (U)"),a=o.get("Heat Exchange Area (A)");
+   if(U===null||a===null){const q=o.get("Heat Load"),l=o.get("Logarithmic mean temperature difference LMTD","LMTD");size=q&&l?q/l:null}else size=U*a/1000}
+  else size=o.get("Heat Removed","DeltaQ");
+  if(size===null||size<=0)continue;
+  let p=null;if(hx){const m=String(o.tag).match(/(\d+)\s*$/);if(m&&parseInt(m[1])in pr)p=pr[parseInt(m[1])]}
+  add(o.tag,corr,size,p);if(drv)add("Driver "+o.tag,"Driver",size)}
+ return[cap,opx]}
+function guessScenario(name){const n=name.toLowerCase();let c=n.includes("cch2")?"CCH2":n.includes("lh2")?"LH2":null;if(!c)return"";
+ if(/hydrogen valley|scenario 1/.test(n))return c+"_HydrogenValley";if(/centrali[sz]ed|scenario 2/.test(n))return c+"_Centralized";
+ if(/distributed|decentrali[sz]ed|scenario 3/.test(n))return c+"_Decentralized";if(/final|core/.test(n))return c+"_Core";return""}
+let DFILES=[];
+$("fd").onchange=e=>{DFILES=[...e.target.files].filter(f=>!/backup/i.test(f.name)).map(f=>({f,s:guessScenario(f.name)}));
+ const seen=new Set();DFILES.forEach(d=>{if(seen.has(d.s))d.s="";else if(d.s)seen.add(d.s)});
+ $("fileList").innerHTML=DFILES.map((d,i)=>`<p>${d.f.name} → <select data-i="${i}"><option value="">(skip)</option>${SCEN.map(x=>`<option${x==d.s?" selected":""}>${x}</option>`).join("")}</select></p>`).join("")};
+$("fileList").onchange=e=>{DFILES[+e.target.dataset.i].s=e.target.value};
+$("ext").onclick=async()=>{const use=DFILES.filter(d=>d.s);if(!use.length){$("exStat").textContent=" Choose DWSIM files and match at least one to a scenario.";return}
+ try{const pr={LH2:$("pl").files[0]?readPressures(await $("pl").files[0].text()):{},CCH2:$("pc").files[0]?readPressures(await $("pc").files[0].text()):{}};
+  let C=[],O=[];for(const d of use){const[c,o]=extractTables(await loadObjects(d.f),d.s,pr[d.s.startsWith("CCH2")?"CCH2":"LH2"],$("cred").checked);C=C.concat(c);O=O.concat(o)}
+  CAP=C;OPX=O;$("exStat").textContent=` Extracted from ${use.length} file(s).`;status()}
+ catch(err){$("exStat").textContent=" "+err.message}};
+const tsv=rows=>rows.length?[Object.keys(rows[0]).join("\t"),...rows.map(r=>Object.values(r).join("\t"))].join("\n"):"";
+$("dCap").onclick=()=>CAP.length&&dl("ForCAPEX.txt",tsv(CAP));$("dOpx").onclick=()=>OPX.length&&dl("ForOPEX.txt",tsv(OPX));
+const tbl=(h,rows)=>`<table><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr>${rows.map(r=>`<tr>${r.map(x=>`<td>${x}</td>`).join("")}</tr>`).join("")}</table>`;
+const lab=r=>`${r.Carrier}\n${r.Pathway}`.split("\n");
+function mk(id,cfg){charts[id]?.destroy();cfg.options={responsive:true,maintainAspectRatio:false,...(cfg.options||{})};charts[id]=new Chart($(id),cfg)}
+function csv(rows){const h=Object.keys(rows[0]);return[h.join(","),...rows.map(r=>h.map(k=>r[k]).join(","))].join("\n")}
+function dl(name,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text]));a.download=name;a.click()}
+let R=[];
+function render(){
+ if(!CAP.length||!OPX.length){$("sum").innerHTML='<p class="warn">Load the CAPEX and OPEX tables on tab 1 first.</p>';return}
+ R=runAll(A,CAP,OPX);
+ $("sum").innerHTML=tbl(["Carrier","Pathway","Delivered (t/yr)","CAPEX (M EUR)","OPEX (M EUR/yr)","Trucks","LCoHC (EUR/kg)"],R.map(r=>[r.Carrier,r.Pathway,f2(r.Delivered_t,0),f2(r.CAPEX_M),f2(r.OPEX_M),r.Fleet,"<b>"+f2(r.LCoHC.Total_EUR_kg,3)+"</b>"]));
+ const K=["Production","Core","Maritime","Storage","HRS","Pipeline","Trucks"];
+ $("con").innerHTML=tbl(["Carrier","Pathway",...K,"Total"],R.map(r=>[r.Carrier,r.Pathway,...K.map(k=>f2(r.LCoHC[k+"_EUR_kg"],3)),"<b>"+f2(r.LCoHC.Total_EUR_kg,3)+"</b>"]));
+ const lbl=R.map(lab),col=["#3d5a80","#00807f","#98c1d9","#ee6c4d","#f4a259","#8d99ae","#7b6d8d"];
+ mk("c1",{type:"bar",data:{labels:lbl,datasets:[{label:"LCoHC (EUR/kg)",data:R.map(r=>r.LCoHC.Total_EUR_kg),backgroundColor:"#00807f"}]},options:{plugins:{title:{display:true,text:"Total LCoHC by pathway"}}}});
+ mk("c2",{type:"bar",data:{labels:lbl,datasets:K.map((k,i)=>({label:k,data:R.map(r=>r.LCoHC[k+"_EUR_kg"]),backgroundColor:col[i]}))},options:{scales:{x:{stacked:true},y:{stacked:true}},plugins:{title:{display:true,text:"LCoHC contribution breakdown (EUR/kg)"}}}});
+ const ev=evolution(A,CAP,OPX);
+ mk("c3",{type:"line",data:{labels:[2030,2040,2050],datasets:CARRIERS.map((k,i)=>({label:k,data:ev.filter(e=>e.Carrier==k).map(e=>e.Total),borderColor:["#00807f","#cc5a2e"][i],tension:0}))},options:{plugins:{title:{display:true,text:"Cost to Taranto port, 2030–2050 (EUR/kg)"}}}});
+ mk("c4",{type:"bar",data:{labels:lbl,datasets:[{label:"CAPEX (M EUR)",data:R.map(r=>r.CAPEX_M),backgroundColor:"#26669e"},{label:"OPEX (M EUR/yr)",data:R.map(r=>r.OPEX_M),backgroundColor:"#cc5a2e"}]},options:{plugins:{title:{display:true,text:"CAPEX and annual OPEX"}}}});
+ const s=sensitivity(A,CAP,OPX,$("sc").value,$("sp").value);
+ mk("c5",{type:"bar",data:{labels:s.rows.map(r=>r.l),datasets:[{label:"low input",data:s.rows.map(r=>[s.base,r.L]),backgroundColor:"#26669e"},{label:"high input",data:s.rows.map(r=>[s.base,r.H]),backgroundColor:"#cc5a2e"}]},options:{indexAxis:"y",plugins:{title:{display:true,text:`Sensitivity of ${$("sc").value} · ${$("sp").value}, base ${f2(s.base,3)} EUR/kg`}}}});
+ $("sens").innerHTML=tbl(["Parameter","Low","High","LCoHC low","LCoHC high","Swing"],s.rows.map(r=>[r.l,r.lo,r.hi,f2(r.L,3),f2(r.H,3),f2(r.swing,3)]));
+}
+$("sc").onchange=$("sp").onchange=render;
+$("dlS").onclick=()=>R.length&&dl("LCoHC_Summary.csv",csv(R.map(r=>({Carrier:r.Carrier,Pathway:r.Pathway,Delivered_H2_t_year:r.Delivered_t,Total_CAPEX_MEUR:r.CAPEX_M,Total_OPEX_MEUR_year:r.OPEX_M,TruckFleet:r.Fleet,LCoHC_EUR_kg:r.LCoHC.Total_EUR_kg}))));
+$("dlC").onclick=()=>R.length&&dl("LCoHC_Contributions.csv",csv(R.map(r=>({Carrier:r.Carrier,Pathway:r.Pathway,...r.LCoHC}))));
+$("saveA").onclick=()=>dl("assumptions.json",JSON.stringify(A,null,2));
+$("loadA").onchange=async e=>{try{A={...DEF,...JSON.parse(await e.target.files[0].text())};buildForm();render()}catch{alert("That file is not a valid assumptions.json.")}};
+$("resetA").onclick=()=>{A={...DEF};buildForm();render()};
+buildForm();show("in");
+</script>
+</body>
+</html>
